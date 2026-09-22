@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>УчХаб: своя онлайн-школа для подготовки к ЕГЭ</title>
+<meta name="description" content="УчХаб даёт преподавателю собственную мини онлайн-школу: сайт под вашей маркой, тренажёр с памятью, домашние задания, оплаты и уведомления в одном окне.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%231e2a19'/%3E%3Ctext x='32' y='43' font-family='Georgia,serif' font-size='34' fill='%23f3eee3' text-anchor='middle'%3EУ%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prata&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!--
+  УчХаб: промо-витрина, вариант A2 «Лес и бумага, лаборатория» — копия A
+  с усиленной интерактивностью: canvas-частицы, генератор задач, шкала
+  баллов, 3D-наклон bento, marquee-скос, прожектор финала, прятки шапки.
+  Самодостаточная страница: все стили и скрипты инлайн, внешние зависимости:
+  Google Fonts + GSAP/ScrollTrigger с cdnjs. Анимации отключаются при
+  prefers-reduced-motion. Радиусы: кнопки-пилюли, карточки 20px.
+-->
+
+<style>
+:root{
+  --forest:#1e2a19;
+  --forest-soft:#2b3a24;
+  --sage:#6f8456;
+  --sage-deep:#566a41;
+  --cream:#f3eee3;
+  --cream-dim:#e9e2d3;
+  --paper:#faf8f2;
+  --ink:#201d16;
+  --ink-soft:#56513f;
+  --accent:#c8642b;
+  --accent-deep:#a84f1f;
+  --line:rgba(32,29,22,.14);
+  --line-on-dark:rgba(243,238,227,.16);
+  --font-display:"Prata","Iowan Old Style",Georgia,serif;
+  --font-body:"Manrope",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","SF Mono",monospace;
+  --container:1240px;
+  --radius-card:20px;
+  --shadow-card:0 24px 60px -24px rgba(30,42,25,.28);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-body);
+  background:var(--paper);
+  color:var(--ink);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* Лёгкое бумажное зерно поверх всей страницы */
+body::after{
+  content:"";position:fixed;inset:0;z-index:90;pointer-events:none;opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+}
+::selection{background:var(--forest);color:var(--cream)}
+img,svg{display:block;max-width:100%}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--accent-deep);outline-offset:3px;border-radius:4px}
+
+.container{max-width:var(--container);margin:0 auto;padding:0 24px}
+
+/* ---------- Прелоадер ---------- */
+.preloader{
+  position:fixed;inset:0;z-index:200;background:var(--forest);
+  display:flex;align-items:center;justify-content:center;
+  animation:preloaderOut .6s ease 1s forwards;
+  will-change:transform;
+}
+/* С GSAP прелоадером управляет скрипт (счётчик + шторка вверх);
+   без GSAP остаётся CSS-фолбэк выше */
+html.js:not(.no-anim) .preloader{animation:none}
+.preloader__word{
+  font-family:var(--font-display);font-size:clamp(28px,4vw,44px);color:var(--cream);
+  animation:preloaderWord .9s cubic-bezier(.16,1,.3,1) both;
+}
+.preloader__num{
+  position:absolute;right:28px;bottom:24px;
+  font-family:var(--font-mono);font-size:13px;color:rgba(243,238,227,.8);
+}
+@keyframes preloaderWord{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@keyframes preloaderOut{to{opacity:0;visibility:hidden}}
+
+/* ---------- Нить прогресса чтения ---------- */
+.progress{
+  position:fixed;top:0;left:0;right:0;height:3px;z-index:110;
+  background:linear-gradient(90deg,var(--sage-deep),var(--accent));
+  transform:scaleX(0);transform-origin:left;
+}
+
+/* ---------- Шапка ---------- */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;height:68px;
+  display:flex;align-items:center;
+  transition:background .35s ease,box-shadow .35s ease;
+}
+.nav.is-solid{
+  background:rgba(250,248,242,.88);
+  backdrop-filter:blur(12px);
+  box-shadow:0 1px 0 var(--line);
+}
+.nav__inner{
+  max-width:var(--container);margin:0 auto;padding:0 24px;width:100%;
+  display:flex;align-items:center;gap:32px;
+}
+.nav__logo{
+  font-family:var(--font-display);font-size:22px;text-decoration:none;letter-spacing:.01em;
+}
+.nav__links{display:flex;gap:28px;margin-left:auto}
+.nav__links a{
+  font-size:14px;font-weight:600;color:var(--ink-soft);text-decoration:none;
+  transition:color .25s ease;
+}
+.nav__links a:hover{color:var(--ink)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  font-family:var(--font-body);font-weight:700;font-size:15px;
+  padding:13px 26px;border-radius:999px;text-decoration:none;border:0;cursor:pointer;
+  transition:transform .25s cubic-bezier(.16,1,.3,1),background .25s ease,box-shadow .25s ease;
+  white-space:nowrap;
+}
+.btn:active{transform:translateY(1px) scale(.985)}
+.btn:disabled{opacity:.55;pointer-events:none}
+.btn--accent{background:var(--accent-deep);color:var(--cream)}
+.btn--accent:hover{background:#974417;box-shadow:0 12px 28px -10px rgba(168,79,31,.55)}
+.btn--ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn--ghost:hover{border-color:var(--ink)}
+.btn--cream{background:var(--cream);color:var(--forest)}
+.btn--cream:hover{background:#fff}
+.nav .btn{padding:10px 20px;font-size:14px}
+
+/* ---------- Hero ---------- */
+.hero{
+  position:relative;min-height:100dvh;
+  display:flex;align-items:center;
+  padding:120px 0 72px;
+  perspective:1200px; /* псевдо-3D сцена: карточка и чипы живут в глубине */
+  background:
+    radial-gradient(52% 42% at 78% 30%,rgba(111,132,86,.14),transparent 70%),
+    radial-gradient(38% 34% at 12% 78%,rgba(200,100,43,.07),transparent 70%);
+}
+/* Живой фон hero: canvas с бумажками и листьями */
+.hero__canvas{position:absolute;inset:0;z-index:0;pointer-events:none}
+.hero .container{position:relative;z-index:1}
+.hero__grid{
+  display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;
+}
+.hero__title{
+  font-family:var(--font-display);font-weight:400;
+  font-size:clamp(40px,5.6vw,76px);line-height:1.08;letter-spacing:-.01em;
+}
+.hero__title .accent{position:relative;color:var(--accent-deep);white-space:nowrap;padding-bottom:.06em}
+.hero__title .accent svg{
+  position:absolute;left:-2%;bottom:-2px;width:104%;height:14px;
+}
+.hero__title .accent svg path{
+  stroke:var(--sage);stroke-width:5;fill:none;stroke-linecap:round;
+}
+.hero__sub{
+  margin-top:26px;font-size:17px;color:var(--ink-soft);max-width:46ch;
+}
+.hero__cta{margin-top:38px;display:flex;gap:14px;flex-wrap:wrap}
+.hero__deco{
+  position:absolute;pointer-events:none;
+}
+
+/* ---------- Карточка тренажёра (живая мини-версия продукта) ---------- */
+.hero__stage{position:relative}
+.quiz{
+  position:relative;
+  background:var(--cream);border-radius:var(--radius-card);
+  box-shadow:var(--shadow-card);border:1px solid rgba(32,29,22,.06);
+  padding:26px 26px 24px;max-width:480px;margin-left:auto;
+  transform:rotate(1.2deg);
+  transform-style:preserve-3d; /* наклон за мышью в 3D */
+}
+/* Плавающие чипы-факты вокруг карточки */
+.fchip{
+  position:absolute;z-index:2;
+  font-family:var(--font-mono);font-size:12px;color:var(--forest);
+  background:var(--cream);border:1px solid rgba(32,29,22,.1);border-radius:999px;
+  padding:9px 14px;box-shadow:0 14px 30px -18px rgba(30,42,25,.35);
+  white-space:nowrap;
+}
+.fchip b{color:var(--accent-deep);font-weight:500}
+.fchip--1{top:-20px;left:-24px}
+.fchip--2{bottom:26px;left:-58px}
+.fchip--3{top:40%;right:-20px}
+@media (max-width:1020px){.fchip{display:none}}
+.quiz__top{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);
+  padding:4px 0 18px;border-bottom:1px solid var(--line);
+}
+.quiz__top b{font-weight:500;color:var(--forest)}
+.quiz__ring{position:relative;width:44px;height:44px;flex:none}
+.quiz__ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.quiz__ring svg circle{fill:none;stroke-width:4}
+.quiz__ring .track{stroke:var(--cream-dim)}
+.quiz__ring .value{stroke:var(--sage-deep);stroke-linecap:round}
+.quiz__ring span{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:11px;color:var(--forest);
+}
+.quiz__question{
+  font-size:18px;font-weight:700;line-height:1.4;margin:18px 0 16px;
+}
+.quiz__options{display:grid;gap:9px}
+.quiz__opt{
+  text-align:left;font-family:var(--font-body);font-size:14.5px;font-weight:600;
+  padding:12px 16px;border-radius:12px;border:1.5px solid var(--line);
+  background:var(--paper);color:var(--ink);cursor:pointer;
+  transition:border-color .2s ease,background .2s ease,transform .2s ease;
+}
+.quiz__opt:hover{border-color:var(--sage);transform:translateX(3px)}
+.quiz__opt.is-correct{border-color:var(--sage-deep);background:rgba(111,132,86,.16)}
+.quiz__opt.is-wrong{
+  border-color:rgba(168,79,31,.55);background:rgba(200,100,43,.1);
+  animation:shake .45s ease;
+}
+@keyframes shake{
+  10%,90%{transform:translateX(-2px)}
+  20%,80%{transform:translateX(3px)}
+  30%,50%,70%{transform:translateX(-5px)}
+  40%,60%{transform:translateX(5px)}
+}
+/* Взлетающий +XP за верный ответ */
+.quiz__xp{
+  position:absolute;top:74px;right:30px;
+  font-family:var(--font-mono);font-size:13px;font-weight:500;color:var(--sage-deep);
+  opacity:0;pointer-events:none;
+}
+.quiz__xp.is-fly{animation:xpfly 1.2s cubic-bezier(.16,1,.3,1) forwards}
+@keyframes xpfly{
+  0%{opacity:0;transform:translateY(8px) scale(.85)}
+  20%{opacity:1;transform:translateY(0) scale(1)}
+  70%{opacity:1}
+  100%{opacity:0;transform:translateY(-30px)}
+}
+.quiz__explain{
+  display:none;margin-top:16px;padding:14px 16px;border-radius:12px;
+  background:var(--forest);color:var(--cream);font-size:13.5px;line-height:1.55;
+}
+.quiz__explain.is-open{display:block}
+.quiz__fsrs{
+  display:none;margin-top:14px;gap:8px;
+}
+.quiz__fsrs.is-open{display:flex}
+.quiz__fsrs button{
+  flex:1;font-family:var(--font-mono);font-size:12.5px;padding:10px 14px;
+  border-radius:999px;border:1.5px solid var(--line);background:transparent;
+  color:var(--ink);cursor:pointer;transition:border-color .2s ease,background .2s ease;
+}
+.quiz__fsrs button:hover{border-color:var(--forest);background:rgba(30,42,25,.06)}
+
+/* ---------- Бегущая строка ---------- */
+.marquee{
+  background:var(--forest);color:var(--cream);overflow:hidden;
+  padding:18px 0;border-block:1px solid var(--forest);
+}
+.marquee__track{display:flex;width:max-content;gap:0}
+/* Фолбэк без GSAP: обычная CSS-анимация */
+html.no-anim .marquee__track{animation:marquee 28s linear infinite}
+.marquee__item{
+  display:flex;align-items:center;gap:26px;padding-right:26px;
+  font-family:var(--font-mono);font-size:14px;letter-spacing:.06em;text-transform:uppercase;
+  white-space:nowrap;
+}
+.marquee__item svg{width:13px;height:13px;flex:none;opacity:.85}
+@keyframes marquee{to{transform:translateX(-50%)}}
+
+/* ---------- Цифры ---------- */
+.stats{padding:88px 0}
+.stats__grid{
+  display:grid;grid-template-columns:repeat(4,1fr);
+}
+.stats__cell{
+  padding:10px 28px;
+  border-left:1px solid var(--line);
+}
+.stats__cell:first-child{border-left:0;padding-left:0}
+.stats__num{
+  font-family:var(--font-display);font-size:clamp(34px,4vw,56px);line-height:1.1;
+  color:var(--forest);
+}
+.stats__num small{font-size:.55em;color:var(--sage-deep)}
+.stats__label{margin-top:10px;font-size:14px;color:var(--ink-soft);max-width:20ch}
+
+/* ---------- Шаги: карточки-наездники (sticky-стек) ---------- */
+.steps{padding:110px 0 140px;background:var(--cream);border-block:1px solid var(--line)}
+.steps__head{max-width:720px;margin-bottom:64px}
+.h2{
+  font-family:var(--font-display);font-weight:400;
+  font-size:clamp(32px,4vw,52px);line-height:1.12;letter-spacing:-.01em;
+}
+/* Блочный поток (не grid): sticky-карточка живёт в пределах всей секции,
+   а не своей строки — только так получается честный наезд друг на друга.
+   Perspective — чтобы накрываемая карточка откидывалась в глубину */
+.steps__stack{display:block;perspective:1400px}
+.step-card{
+  position:sticky;top:calc(88px + var(--i,0) * 16px);
+  display:grid;grid-template-columns:170px 1fr;gap:44px;align-items:center;
+  background:var(--paper);border:1px solid rgba(32,29,22,.09);border-radius:24px;
+  padding:48px 52px;min-height:320px;margin-bottom:28px;
+  box-shadow:0 -18px 50px -30px rgba(30,42,25,.4);
+  will-change:transform;
+}
+.step-card:last-child{margin-bottom:0}
+.step-card:nth-child(2){--i:1}
+.step-card:nth-child(3){--i:2}
+.step-card:nth-child(4){--i:3}
+.steps__num{
+  font-family:var(--font-display);font-size:clamp(72px,8vw,120px);line-height:.9;
+  color:transparent;-webkit-text-stroke:1.5px var(--sage-deep);
+  font-kerning:none;
+}
+.steps__title{font-size:24px;font-weight:800;letter-spacing:-.01em;margin-bottom:12px}
+.steps__text{color:var(--ink-soft);max-width:52ch}
+
+/* ---------- Возможности (bento) ---------- */
+.features{padding:110px 0 120px}
+.features__head{max-width:680px;margin-bottom:60px}
+.bento{
+  display:grid;grid-template-columns:repeat(6,1fr);gap:16px;
+  perspective:1000px; /* карточки наклоняются за мышью */
+}
+.cell{
+  grid-column:span 2;
+  border-radius:var(--radius-card);padding:30px 28px;
+  background:var(--cream);border:1px solid rgba(32,29,22,.07);
+  transition:transform .35s cubic-bezier(.16,1,.3,1),box-shadow .35s ease;
+  position:relative;overflow:hidden;
+}
+/* Спотлайт вслед за курсором */
+.cell::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;
+  background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(111,132,86,.2),transparent 65%);
+  transition:opacity .35s ease;pointer-events:none;
+}
+.cell:hover::before{opacity:1}
+.cell--forest::before{
+  background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(243,238,227,.13),transparent 65%);
+}
+/* Подъём карточки убран: transform отдан 3D-наклону (GSAP) */
+.cell:hover{box-shadow:var(--shadow-card)}
+.cell--wide{grid-column:span 4}
+.cell--forest{background:var(--forest);color:var(--cream);border-color:transparent}
+.cell--forest .cell__title{color:var(--cream)}
+.cell--forest .cell__text{color:rgba(243,238,227,.72)}
+.cell--sage{background:rgba(111,132,86,.18);border-color:rgba(86,106,65,.25)}
+.cell__icon{
+  width:46px;height:46px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--paper);color:var(--sage-deep);margin-bottom:20px;
+}
+.cell--forest .cell__icon{background:var(--forest-soft);color:var(--cream)}
+.cell__icon svg{width:23px;height:23px}
+.cell__title{font-size:18.5px;font-weight:800;letter-spacing:-.01em;margin-bottom:8px}
+.cell__text{font-size:14.5px;color:var(--ink-soft);line-height:1.55}
+
+/* ---------- Конструктор школы ---------- */
+.builder{padding:16px 0 130px}
+.builder__head{max-width:680px;margin-bottom:48px}
+.builder__panel{
+  background:var(--cream);border:1px solid rgba(32,29,22,.07);
+  border-radius:24px;padding:clamp(28px,4vw,52px);
+  display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(28px,4vw,56px);align-items:center;
+}
+.builder__label{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--sage-deep);margin:26px 0 14px;
+}
+.builder__group:first-child .builder__label{margin-top:0}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{
+  font-family:var(--font-body);font-weight:700;font-size:14px;
+  padding:10px 18px;border-radius:999px;border:1.5px solid var(--line);
+  background:var(--paper);color:var(--ink);cursor:pointer;
+  transition:border-color .2s ease,background .2s ease,color .2s ease,transform .2s ease;
+}
+.chip:hover{border-color:var(--sage)}
+.chip:active{transform:scale(.96)}
+.chip.is-on{background:var(--forest);border-color:var(--forest);color:var(--cream)}
+.builder__out{padding-left:clamp(0px,3vw,40px);border-left:1px solid var(--line)}
+.builder__num{
+  font-family:var(--font-display);font-size:clamp(44px,5vw,72px);line-height:1;
+  color:var(--forest);
+}
+.builder__cap{margin-top:8px;font-size:14px;color:var(--ink-soft);max-width:26ch}
+.builder__line{
+  margin-top:18px;font-family:var(--font-mono);font-size:13px;line-height:1.7;
+  color:var(--ink-soft);
+}
+
+/* ---------- Попробуйте прямо здесь: генератор и шкала ---------- */
+.try{padding:16px 0 130px}
+.try__head{max-width:680px;margin-bottom:48px}
+.try__grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.try__card{
+  display:flex;flex-direction:column;
+  background:var(--cream);border:1px solid rgba(32,29,22,.07);
+  border-radius:24px;padding:clamp(28px,3.4vw,44px);
+}
+.try__tag{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--sage-deep);margin-bottom:22px;
+}
+.try__task{font-size:17.5px;font-weight:700;line-height:1.5;max-width:44ch}
+.try__ans{
+  margin-top:16px;padding:13px 16px;border-radius:12px;
+  background:var(--forest);color:var(--cream);
+  font-family:var(--font-mono);font-size:14px;
+}
+.try__row{margin-top:auto;padding-top:26px;display:flex;gap:12px;flex-wrap:wrap}
+.try__score{
+  display:flex;align-items:baseline;gap:14px;
+  font-family:var(--font-display);font-size:clamp(56px,6vw,86px);line-height:1;color:var(--forest);
+}
+.try__score small{font-family:var(--font-body);font-size:14px;font-weight:600;color:var(--ink-soft)}
+.try__lbl{margin:26px 0 8px;font-size:14px;font-weight:600;color:var(--ink-soft)}
+.try__lbl b{color:var(--ink)}
+.try__note{margin-top:16px;font-size:12.5px;color:var(--ink-soft);font-family:var(--font-mono);line-height:1.6}
+input[type="range"]{
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:28px;background:transparent;cursor:pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track{height:4px;border-radius:99px;background:var(--cream-dim)}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:26px;height:26px;border-radius:50%;margin-top:-11px;
+  background:var(--forest);border:5px solid var(--paper);
+  box-shadow:0 4px 14px -4px rgba(30,42,25,.5);
+}
+input[type="range"]::-moz-range-track{height:4px;border-radius:99px;background:var(--cream-dim)}
+input[type="range"]::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;
+  background:var(--forest);border:5px solid var(--paper);
+  box-shadow:0 4px 14px -4px rgba(30,42,25,.5);
+}
+
+/* ---------- Гигантское слово: контур заливается по скроллу ---------- */
+.kinetic{
+  padding:60px 0 150px;overflow:hidden;
+}
+.kinetic__word{
+  position:relative;
+  font-family:var(--font-display);
+  font-size:clamp(60px,14vw,225px);line-height:1;white-space:nowrap;
+  color:transparent;-webkit-text-stroke:1.5px var(--sage-deep);
+}
+.kinetic__fill{
+  position:absolute;inset:0;
+  color:var(--forest);-webkit-text-stroke:1.5px var(--forest);
+  clip-path:inset(0 100% 0 0);
+}
+.kinetic__cap{margin-top:20px;font-family:var(--font-mono);font-size:13px;color:var(--ink-soft)}
+
+/* ---------- Отзывы ---------- */
+.reviews{padding:20px 0 300px}
+.reviews__head{max-width:680px;margin-bottom:56px}
+.reviews__grid{
+  display:grid;grid-template-columns:1.25fr 1fr;gap:16px;
+}
+.review{
+  display:flex;flex-direction:column;
+  background:var(--cream);border:1px solid rgba(32,29,22,.07);
+  border-radius:var(--radius-card);padding:34px 32px;
+}
+.review--big{grid-row:span 2}
+/* Десктоп: отзывы едут горизонтально внутри запиненной секции */
+@media (min-width:1021px){
+  .reviews{padding:110px 0 300px}
+  .reviews__grid{display:flex;gap:22px;width:max-content;will-change:transform}
+  .review{width:400px;height:460px}
+  .review--big{width:600px;height:460px}
+}
+.review__stars{color:var(--accent-deep);font-size:15px;letter-spacing:3px}
+.review__quote{
+  font-family:var(--font-display);font-weight:400;
+  font-size:clamp(20px,2vw,27px);line-height:1.35;margin:18px 0 auto;
+}
+.review--small .review__quote{font-family:var(--font-body);font-size:16px;font-weight:500;line-height:1.6}
+.review__who{display:flex;align-items:center;gap:14px;margin-top:26px}
+.review__ava{
+  width:44px;height:44px;border-radius:50%;flex:none;
+  background:var(--forest);color:var(--cream);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-display);font-size:17px;
+}
+.review--small .review__ava{background:var(--sage-deep)}
+.review__name{font-weight:800;font-size:14.5px}
+.review__role{font-size:13px;color:var(--ink-soft)}
+.reviews__note{margin-top:22px;font-size:12.5px;color:var(--ink-soft);font-family:var(--font-mono)}
+
+/* ---------- Тёмный финальный блок: шторкой наезжает на отзывы ---------- */
+.dark{
+  position:relative;z-index:3;overflow:hidden;
+  background:var(--forest);color:var(--cream);
+  margin-top:-170px;
+  border-radius:44px 44px 0 0;
+  box-shadow:0 -34px 70px -40px rgba(30,42,25,.55);
+  padding:150px 0 0;
+}
+/* Прожектор: мягкое пятно света идёт за мышью */
+.dark::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(560px circle at var(--dx,72%) var(--dy,28%),rgba(243,238,227,.08),transparent 62%);
+}
+.dark__title{
+  font-family:var(--font-display);font-weight:400;
+  font-size:clamp(36px,5vw,66px);line-height:1.1;max-width:16ch;letter-spacing:-.01em;
+}
+.dark__title .accent{color:var(--cream-dim);font-style:normal}
+.dark__cols{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:0;
+  margin:76px 0 90px;
+}
+.dark__col{
+  padding:6px 32px;border-left:1px solid var(--line-on-dark);
+}
+.dark__col:first-child{border-left:0;padding-left:0}
+.dark__col h3{font-size:16.5px;font-weight:800;margin-bottom:10px;color:var(--cream)}
+.dark__col p{font-size:14.5px;color:rgba(243,238,227,.78);line-height:1.6}
+.dark__cta{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding-bottom:110px;
+}
+.link-quiet{
+  color:rgba(243,238,227,.75);font-weight:600;font-size:15px;
+  text-decoration:underline;text-decoration-color:var(--line-on-dark);text-underline-offset:5px;
+  transition:color .25s ease,text-decoration-color .25s ease;
+}
+.link-quiet:hover{color:var(--cream);text-decoration-color:var(--cream)}
+.footer{
+  border-top:1px solid var(--line-on-dark);
+  padding:30px 0 34px;
+  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+}
+.footer__logo{font-family:var(--font-display);font-size:19px}
+.footer__meta{font-family:var(--font-mono);font-size:12px;color:rgba(243,238,227,.78)}
+.footer a.link-quiet{margin-left:auto}
+
+/* ---------- Анимации появления ---------- */
+.js .reveal{opacity:0;transform:translateY(28px)}
+.js .reveal.is-in{opacity:1;transform:none;transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.js .char{display:inline-block}
+.no-anim .reveal{opacity:1;transform:none}
+.no-anim .char{display:inline}
+
+/* ---------- Адаптив ---------- */
+@media (max-width:1020px){
+  .hero__grid{grid-template-columns:1fr;gap:48px}
+  .quiz{margin:0 auto;transform:rotate(0)}
+  .bento{grid-template-columns:repeat(2,1fr)}
+  .cell,.cell--wide{grid-column:span 1}
+  .stats__grid{grid-template-columns:repeat(2,1fr);gap:36px 0}
+  .stats__cell:nth-child(odd){border-left:0;padding-left:0}
+  .dark__cols{grid-template-columns:1fr;gap:34px}
+  .dark__col{border-left:0;padding:0}
+  .step-card{
+    grid-template-columns:130px 1fr;padding:36px 32px;min-height:260px;
+    top:calc(88px + var(--i,0) * 12px);
+  }
+  .builder__panel{grid-template-columns:1fr}
+  .builder__out{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:28px}
+}
+@media (max-width:640px){
+  .nav__links{display:none}
+  .steps__stack{display:block}
+  .step-card{
+    grid-template-columns:1fr;gap:10px;padding:28px 24px;min-height:0;
+    top:calc(78px + var(--i,0) * 8px);margin-bottom:16px;
+  }
+  .steps__num{font-size:56px}
+  .reviews{padding-bottom:200px}
+  .dark{margin-top:-90px;border-radius:28px 28px 0 0}
+  .reviews__grid{grid-template-columns:1fr}
+  .review--big{grid-row:auto}
+  .stats__grid{grid-template-columns:1fr 1fr}
+  .stats__num{font-size:34px}
+  .try__grid{grid-template-columns:1fr}
+  .hero{padding-top:104px}
+  .hero__cta .btn{flex:1 1 auto}
+}
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .preloader{display:none}
+  html.no-anim .marquee__track{animation:none}
+  .js .reveal{opacity:1;transform:none}
+  .cell,.quiz__opt,.btn,.chip{transition:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Нить прогресса чтения -->
+<div class="progress" aria-hidden="true"></div>
+
+<!-- Прелоадер: с GSAP — счётчик и шторка вверх; без JS — CSS-фолбэк -->
+<div class="preloader" aria-hidden="true">
+  <span class="preloader__word">УчХаб</span>
+  <span class="preloader__num" id="preNum">0</span>
+</div>
+
+<header class="nav" id="nav">
+  <div class="nav__inner">
+    <a class="nav__logo" href="#top">УчХаб</a>
+    <nav class="nav__links" aria-label="Разделы">
+      <a href="#how">Как это работает</a>
+      <a href="#features">Возможности</a>
+      <a href="#builder">Конструктор</a>
+      <a href="#reviews">Отзывы</a>
+    </nav>
+    <a class="btn btn--accent" href="https://ege-hub.onrender.com" target="_blank" rel="noopener">Смотреть демо</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ===== Hero: слева манифест, справа живая карточка тренажёра ===== -->
+  <section class="hero">
+    <canvas class="hero__canvas" id="heroCanvas" aria-hidden="true"></canvas>
+    <div class="container hero__grid">
+      <div>
+        <h1 class="hero__title" data-split>
+          <span class="accent">Своя<svg viewBox="0 0 120 14" preserveAspectRatio="none" aria-hidden="true"><path d="M3 10 C 30 4, 60 12, 117 6"/></svg></span>
+          онлайн-школа для подготовки к&nbsp;ЕГЭ</h1>
+        <p class="hero__sub">Сайт, тренажёр, домашние задания, оплаты и уведомления в одном окне. Под вашей маркой, на вашем домене.</p>
+        <div class="hero__cta">
+          <a class="btn btn--accent" href="https://ege-hub.onrender.com" target="_blank" rel="noopener">Смотреть демо</a>
+          <a class="btn btn--ghost" href="#features">Возможности</a>
+        </div>
+      </div>
+
+      <!-- Живая мини-версия тренажёра: настоящий интерактив, не картинка.
+           Сцена с чипами-фактами на разной глубине (псевдо-3D за мышью) -->
+      <div class="hero__stage" id="heroStage">
+        <span class="fchip fchip--1" data-depth="26">FSRS-повторения</span>
+        <span class="fchip fchip--2" data-depth="44"><b>+120 XP</b> за пробник</span>
+        <span class="fchip fchip--3" data-depth="34">работает офлайн</span>
+      <div class="quiz" id="quiz" data-quiz>
+        <div class="quiz__top">
+          <b id="quizMeta">Биология, задание 2</b>
+          <div class="quiz__ring" aria-hidden="true">
+            <svg viewBox="0 0 44 44"><circle class="track" cx="22" cy="22" r="19"/><circle class="value" cx="22" cy="22" r="19" id="quizRing" stroke-dasharray="119.4" stroke-dashoffset="36"/></svg>
+            <span>70%</span>
+          </div>
+        </div>
+        <p class="quiz__question" id="quizQuestion">Почему митохондрии называют энергетическими станциями клетки?</p>
+        <span class="quiz__xp" id="quizXp" aria-hidden="true">+12 XP</span>
+        <div class="quiz__options" id="quizOptions"></div>
+        <div class="quiz__explain" id="quizExplain" role="status"></div>
+        <div class="quiz__fsrs" id="quizFsrs">
+          <button type="button" data-grade="0">Трудно</button>
+          <button type="button" data-grade="1">Хорошо</button>
+          <button type="button" data-grade="2">Легко</button>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Тихий декор: тонкая дуга за карточкой -->
+    <svg class="hero__deco" style="right:-140px;top:8%;width:520px;height:520px;opacity:.5" viewBox="0 0 520 520" fill="none" aria-hidden="true">
+      <circle cx="260" cy="260" r="250" stroke="#6f8456" stroke-opacity=".4" stroke-width="1.5" stroke-dasharray="3 10"/>
+    </svg>
+  </section>
+
+  <!-- ===== Бегущая строка ===== -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee__track" id="marqueeTrack">
+      <div class="marquee__item">
+        <span>Математика</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Русский язык</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Биология</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>FSRS-повторения</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Пробники с шкалами</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Олимпиады ВсОШ</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Офлайн-режим</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Домашние задания</span><svg viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12M2.8 2.8l8.4 8.4M11.2 2.8L2.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Цифры (реальные данные стендов) ===== -->
+  <section class="stats">
+    <div class="container stats__grid">
+      <div class="stats__cell reveal">
+        <div class="stats__num" data-count="9266">0</div>
+        <div class="stats__label">заданий в банке по трём предметам</div>
+      </div>
+      <div class="stats__cell reveal">
+        <div class="stats__num" data-count="110">0</div>
+        <div class="stats__label">комплектов ВсОШ с разборами</div>
+      </div>
+      <div class="stats__cell reveal">
+        <div class="stats__num" data-count="6">0</div>
+        <div class="stats__label">типов вопросов в тренажёре</div>
+      </div>
+      <div class="stats__cell reveal">
+        <div class="stats__num"><small>0</small></div>
+        <div class="stats__label">минут установки: всё работает в браузере</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Четыре шага ===== -->
+  <section class="steps" id="how">
+    <div class="container">
+      <div class="steps__head reveal">
+        <h2 class="h2">Четыре шага до своей школы</h2>
+      </div>
+      <div class="steps__stack">
+        <article class="step-card">
+          <div class="steps__num">01</div>
+          <div class="steps__body">
+            <h3 class="steps__title">Заводите школу</h3>
+            <p class="steps__text">Регистрация занимает минуту. Получаете готовый сайт, кабинет администратора и Telegram-бота. Ничего устанавливать и программировать не нужно.</p>
+          </div>
+        </article>
+        <article class="step-card">
+          <div class="steps__num">02</div>
+          <div class="steps__body">
+            <h3 class="steps__title">Настраиваете марку</h3>
+            <p class="steps__text">Свой домен или поддомен, ваши цвета, логотип и тексты. Сайт ищется в Яндекс и Google и выглядит именно вашей школой, а не шаблоном.</p>
+          </div>
+        </article>
+        <article class="step-card">
+          <div class="steps__num">03</div>
+          <div class="steps__body">
+            <h3 class="steps__title">Приглашаете учеников</h3>
+            <p class="steps__text">QR-код или ссылка: ученик открывает кабинет на телефоне, родитель видит оплаты и прогресс. Приложение работает даже без интернета.</p>
+          </div>
+        </article>
+        <article class="step-card">
+          <div class="steps__num">04</div>
+          <div class="steps__body">
+            <h3 class="steps__title">Ведёте всё в одном окне</h3>
+            <p class="steps__text">Домашние задания, расписание, оплаты и аналитика по каждому ученику. Тренажёр сам напоминает материал, который начал забываться.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Возможности: bento ===== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features__head reveal">
+        <h2 class="h2">Всё для школы в одном окне</h2>
+      </div>
+      <div class="bento">
+        <div class="cell cell--wide cell--forest reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+          <div class="cell__title">Тренажёр с памятью</div>
+          <div class="cell__text">9 266 заданий по математике, русскому и биологии. Планировщик FSRS возвращается к теме ровно тогда, когда она начинает забываться. Пробники проверяются по официальным шкалам.</div>
+        </div>
+        <div class="cell reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></div>
+          <div class="cell__title">Админка в одном окне</div>
+          <div class="cell__text">Ученики, ДЗ, расписание, оплаты и балансы, аналитика. Все 15 разделов школы под рукой.</div>
+        </div>
+        <div class="cell cell--sage reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+          <div class="cell__title">Кабинет в кармане</div>
+          <div class="cell__text">PWA на телефоне ученика и родителя. Работает без интернета: задачи скачиваются заранее.</div>
+        </div>
+        <div class="cell reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2M9 20h6M12 4v16"/></svg></div>
+          <div class="cell__title">Генератор задач</div>
+          <div class="cell__text">Бесконечная практика: тот же тип задания, но каждый раз с новыми числами.</div>
+        </div>
+        <div class="cell reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 21v-6M5 4h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"/></svg></div>
+          <div class="cell__title">Олимпиады ВсОШ</div>
+          <div class="cell__text">110 комплектов по русскому и математике, школьный и муниципальный этапы, с разборами.</div>
+        </div>
+        <div class="cell cell--wide reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.6A8.5 8.5 0 1 1 21 11.5Z"/></svg></div>
+          <div class="cell__title">Уведомления без спама</div>
+          <div class="cell__text">Telegram и email: напоминание об оплате, смене занятия и недельный дайджест родителю. Настраивается в два клика, отключается в один.</div>
+        </div>
+        <div class="cell reveal">
+          <div class="cell__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div class="cell__title">Данные и деньги ваши</div>
+          <div class="cell__text">152-ФЗ, открытые банки ФИПИ. База, домен и оплата остаются у преподавателя.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Конструктор школы ===== -->
+  <section class="builder" id="builder">
+    <div class="container">
+      <div class="builder__head reveal">
+        <h2 class="h2">Соберите свою школу</h2>
+      </div>
+      <div class="builder__panel reveal">
+        <div>
+          <div class="builder__group">
+            <div class="builder__label">Предметы</div>
+            <div class="chips" data-group="subjects">
+              <button class="chip is-on" type="button" data-bank="4997" data-vsosh="43" aria-pressed="true">Математика</button>
+              <button class="chip is-on" type="button" data-bank="1607" data-vsosh="67" aria-pressed="true">Русский язык</button>
+              <button class="chip" type="button" data-bank="2662" data-vsosh="0" aria-pressed="false">Биология</button>
+            </div>
+          </div>
+          <div class="builder__group">
+            <div class="builder__label">Учеников</div>
+            <div class="chips" data-group="size">
+              <button class="chip" type="button" aria-pressed="false">До 30</button>
+              <button class="chip is-on" type="button" aria-pressed="true">30-100</button>
+              <button class="chip" type="button" aria-pressed="false">Больше 100</button>
+            </div>
+          </div>
+        </div>
+        <div class="builder__out">
+          <div class="builder__num" id="builderNum">0</div>
+          <div class="builder__cap">заданий уже ждут в банке по выбранным предметам</div>
+          <p class="builder__line" id="builderLine"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Попробуйте прямо здесь ===== -->
+  <section class="try" id="try">
+    <div class="container">
+      <div class="try__head reveal">
+        <h2 class="h2">Попробуйте прямо здесь</h2>
+      </div>
+      <div class="try__grid">
+        <div class="try__card reveal">
+          <div class="try__tag">Генератор задач</div>
+          <p class="try__task" id="genTask"></p>
+          <p class="try__ans" id="genAns" hidden></p>
+          <div class="try__row">
+            <button class="btn btn--ghost" id="genShow" type="button">Показать ответ</button>
+            <button class="btn btn--accent" id="genNew" type="button">Новая задача</button>
+          </div>
+        </div>
+        <div class="try__card reveal">
+          <div class="try__tag">Шкала баллов</div>
+          <div class="try__score"><span id="scaleTest">64</span><small>тестовый балл</small></div>
+          <label class="try__lbl" for="scaleRange">первичный балл: <b id="scalePrim">12</b></label>
+          <input type="range" id="scaleRange" min="0" max="32" value="12" step="1" aria-label="Первичный балл">
+          <p class="try__note">демонстрационная шкала; в продукте пробники считаются по официальным таблицам</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Гигантское слово: заливка по скроллу ===== -->
+  <section class="kinetic" aria-label="Результат">
+    <div class="container">
+      <div class="kinetic__word">РЕЗУЛЬТАТ<span class="kinetic__fill" aria-hidden="true">РЕЗУЛЬТАТ</span></div>
+      <p class="kinetic__cap">то, ради чего всё затевается</p>
+    </div>
+  </section>
+
+  <!-- ===== Отзывы ===== -->
+  <section class="reviews" id="reviews">
+    <div class="container">
+      <div class="reviews__head reveal">
+        <h2 class="h2">Что говорят о платформе</h2>
+      </div>
+      <div class="reviews__grid">
+        <figure class="review review--big reveal">
+          <div class="review__stars" aria-label="5 из 5">★★★★★</div>
+          <blockquote class="review__quote">Проверка домашек перестала съедать вечера. Тренажёр сам подсовывает каждому то, что он начал забывать, а я вижу на панели, кому из ребят нужна помощь.</blockquote>
+          <figcaption class="review__who">
+            <span class="review__ava">МК</span>
+            <span><span class="review__name">Марина Ковалёва</span><br><span class="review__role">преподаватель биологии, 11 классов</span></span>
+          </figcaption>
+        </figure>
+        <figure class="review review--small reveal">
+          <div class="review__stars" aria-label="5 из 5">★★★★★</div>
+          <blockquote class="review__quote">Видно, сколько занятий оплачено и что задано на неделю. Раз в неделю приходит спокойное письмо с прогрессом сына.</blockquote>
+          <figcaption class="review__who">
+            <span class="review__ava">ОД</span>
+            <span><span class="review__name">Ольга Дементьева</span><br><span class="review__role">мама одиннадцатиклассника</span></span>
+          </figcaption>
+        </figure>
+        <figure class="review review--small reveal">
+          <div class="review__stars" aria-label="5 из 5">★★★★★</div>
+          <blockquote class="review__quote">Занимаюсь в метро без интернета: задания скачались заранее, дома всё синхронизируется.</blockquote>
+          <figcaption class="review__who">
+            <span class="review__ava">АС</span>
+            <span><span class="review__name">Артём Свиридов</span><br><span class="review__role">ученик, готовится к ЕГЭ по математике</span></span>
+          </figcaption>
+        </figure>
+      </div>
+      <p class="reviews__note">Тексты приведены как примеры для витрины.</p>
+    </div>
+  </section>
+
+  <!-- ===== Тёмный финал: владение + CTA + футер ===== -->
+  <section class="dark">
+    <div class="container">
+      <h2 class="dark__title reveal">Домен, база и бот <span class="accent">принадлежат вам</span></h2>
+      <div class="dark__cols">
+        <div class="dark__col reveal">
+          <h3>Домен и сайт</h3>
+          <p>Свой домен через CNAME или поддомен школы. Контент и внешний вид полностью под вашим контролем.</p>
+        </div>
+        <div class="dark__col reveal">
+          <h3>Данные учеников</h3>
+          <p>Отдельная база на вашем инстансе. Соответствие 152-ФЗ, никаких общих таблиц с другими школами.</p>
+        </div>
+        <div class="dark__col reveal">
+          <h3>Telegram-бот</h3>
+          <p>Собственный бот школы: приглашения, напоминания, дайджесты. Настраивается без программиста.</p>
+        </div>
+      </div>
+      <div class="dark__cta reveal">
+        <a class="btn btn--cream" href="https://ege-hub.onrender.com" target="_blank" rel="noopener">Смотреть демо</a>
+        <a class="link-quiet" href="https://ege-hub.onrender.com/platform.html">О платформе</a>
+      </div>
+      <footer class="footer">
+        <span class="footer__logo">УчХаб</span>
+        <span class="footer__meta">промо-витрина, 2026</span>
+        <a class="link-quiet" href="https://ege-hub.onrender.com" target="_blank" rel="noopener">ege-hub.onrender.com</a>
+      </footer>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/ScrollTrigger.min.js"></script>
+<script>
+(function(){
+  'use strict';
+  document.documentElement.classList.add('js');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var hasGsap = typeof window.gsap !== 'undefined';
+  if (reduce || !hasGsap) { document.documentElement.classList.add('no-anim'); }
+
+  /* ---------- Шапка: фон после прокрутки ---------- */
+  var nav = document.getElementById('nav');
+  var onScroll = function(){ nav.classList.toggle('is-solid', window.scrollY > 24); };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* ---------- Дублирование бегущей строки для бесшовности ---------- */
+  var track = document.getElementById('marqueeTrack');
+  track.appendChild(track.firstElementChild.cloneNode(true));
+
+  /* ---------- Живой тренажёр ---------- */
+  var QUESTIONS = [
+    {
+      meta: 'Биология, задание 2',
+      q: 'Почему митохондрии называют энергетическими станциями клетки?',
+      options: ['В них синтезируется АТФ', 'В них синтезируется белок', 'В них хранится наследственная информация', 'В них происходит фотосинтез'],
+      correct: 0,
+      explain: 'Митохондрии окисляют органические вещества и запасают энергию в виде АТФ. Тренажёр запомнит, что тема идёт легко, и вернётся к ней по расписанию FSRS.'
+    },
+    {
+      meta: 'Математика, задание 1',
+      q: 'Из 20 учеников нужно выбрать двух дежурных. Сколькими способами это можно сделать?',
+      options: ['190', '380', '400', '40'],
+      correct: 0,
+      explain: 'Число сочетаний: 20 × 19 / 2 = 190. Генератор задач соберёт десятки таких примеров с новыми числами.'
+    }
+  ];
+  var qi = 0, locked = false;
+  var elMeta = document.getElementById('quizMeta');
+  var elQ = document.getElementById('quizQuestion');
+  var elOpts = document.getElementById('quizOptions');
+  var elExplain = document.getElementById('quizExplain');
+  var elFsrs = document.getElementById('quizFsrs');
+  var elXp = document.getElementById('quizXp');
+  var quizRing = document.getElementById('quizRing');
+  var quizRingPct = document.querySelector('.quiz__ring span');
+  var ringVal = 70;
+
+  function renderQuestion(){
+    var item = QUESTIONS[qi];
+    locked = false;
+    elMeta.textContent = item.meta;
+    elQ.textContent = item.q;
+    elExplain.classList.remove('is-open');
+    elFsrs.classList.remove('is-open');
+    elXp.classList.remove('is-fly');
+    elOpts.innerHTML = '';
+    item.options.forEach(function(text, idx){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'quiz__opt';
+      b.textContent = text;
+      b.addEventListener('click', function(){ answer(idx, b); });
+      elOpts.appendChild(b);
+    });
+  }
+
+  function answer(idx, btn){
+    if (locked) return;
+    locked = true;
+    var item = QUESTIONS[qi];
+    var buttons = elOpts.children;
+    buttons[item.correct].classList.add('is-correct');
+    if (idx !== item.correct) {
+      btn.classList.add('is-wrong'); /* тряска ошибочного варианта */
+    } else {
+      elXp.classList.remove('is-fly');
+      void elXp.offsetWidth; /* перезапуск анимации */
+      elXp.classList.add('is-fly');
+      /* кольцо прогресса подрастает за верный ответ */
+      ringVal = Math.min(ringVal + 6, 96);
+      quizRing.setAttribute('stroke-dashoffset', (119.4 * (1 - ringVal / 100)).toFixed(1));
+      quizRingPct.textContent = ringVal + '%';
+      if (!reduce && hasGsap) {
+        gsap.fromTo('.quiz__ring', { scale: 1 }, { scale: 1.16, duration: .18, yoyo: true, repeat: 1, ease: 'power2.out' });
+      }
+    }
+    elExplain.textContent = item.explain;
+    elExplain.classList.add('is-open');
+    elFsrs.classList.add('is-open');
+  }
+
+  elFsrs.addEventListener('click', function(){
+    /* оценка запомнена «планировщиком»: показываем следующий вопрос */
+    qi = (qi + 1) % QUESTIONS.length;
+    renderQuestion();
+  });
+
+  renderQuestion();
+
+  /* ---------- Конструктор школы ---------- */
+  var chipsSubjects = document.querySelectorAll('[data-group="subjects"] .chip');
+  var chipsSize = document.querySelectorAll('[data-group="size"] .chip');
+  var elBNum = document.getElementById('builderNum');
+  var elBLine = document.getElementById('builderLine');
+  var bankValue = { v: 0 };
+
+  function joinNames(a){
+    if (a.length === 1) return a[0];
+    return a.slice(0, -1).join(', ') + ' и ' + a[a.length - 1];
+  }
+
+  function builderRender(animate){
+    var sum = 0, vsosh = 0, names = [];
+    chipsSubjects.forEach(function(chip){
+      if (chip.classList.contains('is-on')) {
+        sum += parseInt(chip.getAttribute('data-bank'), 10);
+        vsosh += parseInt(chip.getAttribute('data-vsosh'), 10);
+        names.push(chip.textContent);
+      }
+    });
+    var size = '';
+    chipsSize.forEach(function(chip){
+      if (chip.classList.contains('is-on')) size = chip.textContent;
+    });
+
+    if (sum === 0) {
+      elBNum.textContent = '0';
+      elBLine.textContent = 'Выберите хотя бы один предмет.';
+      bankValue.v = 0;
+      return;
+    }
+    if (animate && !reduce && hasGsap) {
+      var obj = { v: bankValue.v };
+      gsap.to(obj, {
+        v: sum, duration: .7, ease: 'power2.out',
+        onUpdate: function(){ elBNum.textContent = Math.round(obj.v).toLocaleString('ru-RU'); }
+      });
+    } else {
+      elBNum.textContent = sum.toLocaleString('ru-RU');
+    }
+    bankValue.v = sum;
+
+    var line = joinNames(names) + ', ' + size.toLowerCase() + ' учеников. ';
+    line += vsosh > 0
+      ? 'Комплекты ВсОШ по вашему набору: ' + vsosh + '.'
+      : 'Комплекты ВсОШ: пока готовим по русскому и математике.';
+    elBLine.textContent = line;
+  }
+
+  document.querySelectorAll('.chips').forEach(function(group){
+    var single = group.getAttribute('data-group') === 'size';
+    group.querySelectorAll('.chip').forEach(function(chip){
+      chip.addEventListener('click', function(){
+        if (single) {
+          group.querySelectorAll('.chip').forEach(function(c){
+            c.classList.remove('is-on');
+            c.setAttribute('aria-pressed', 'false');
+          });
+          chip.classList.add('is-on');
+          chip.setAttribute('aria-pressed', 'true');
+        } else {
+          chip.classList.toggle('is-on');
+          chip.setAttribute('aria-pressed', chip.classList.contains('is-on') ? 'true' : 'false');
+        }
+        builderRender(true);
+      });
+    });
+  });
+
+  builderRender(false);
+
+  /* ---------- Генератор задач: та же задача, новые числа ---------- */
+  var genTask = document.getElementById('genTask');
+  var genAns = document.getElementById('genAns');
+  var genShow = document.getElementById('genShow');
+  var genNew = document.getElementById('genNew');
+  function rnd(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+  function genRender(){
+    var x = rnd(30, 60);                          /* цена тетради */
+    var p = [5, 10, 12, 15, 20, 25][rnd(0, 5)];   /* повышение цены, % */
+    var s = rnd(800, 1400);                       /* сумма в кармане */
+    var price = x * (1 + p / 100);
+    var n = Math.floor(s / price);
+    genTask.textContent = 'Тетрадь стоит ' + x + ' рублей. Какое наибольшее число тетрадей можно купить на ' + s + ' рублей после повышения цены на ' + p + '%?';
+    genAns.textContent = 'Ответ: ' + n + ' тетрадей (новая цена ' + price.toFixed(2).replace('.', ',') + ' р. за штуку)';
+    genAns.hidden = true;
+    genShow.disabled = false;
+    if (!reduce && hasGsap) {
+      gsap.fromTo(genTask, { opacity: .15, y: 8 }, { opacity: 1, y: 0, duration: .45, ease: 'power2.out' });
+    }
+  }
+  genShow.addEventListener('click', function(){
+    genAns.hidden = false;
+    genShow.disabled = true;
+    if (!reduce && hasGsap) {
+      gsap.fromTo(genAns, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .35, ease: 'power2.out' });
+    }
+  });
+  genNew.addEventListener('click', genRender);
+  genRender();
+
+  /* ---------- Шкала баллов: первичный в тестовый ---------- */
+  var SCALE = [0,6,11,17,22,27,34,40,46,52,58,64,70,72,74,76,78,80,82,84,86,88,90,92,94,96,98,99,100,100,100,100,100];
+  var scaleRange = document.getElementById('scaleRange');
+  var scaleTest = document.getElementById('scaleTest');
+  var scalePrim = document.getElementById('scalePrim');
+  scaleRange.addEventListener('input', function(){
+    var v = parseInt(scaleRange.value, 10);
+    scalePrim.textContent = v;
+    var t = SCALE[v];
+    if (!reduce && hasGsap) {
+      var o = { v: parseInt(scaleTest.textContent, 10) || 0 };
+      gsap.to(o, {
+        v: t, duration: .35, ease: 'power2.out',
+        onUpdate: function(){ scaleTest.textContent = Math.round(o.v); }
+      });
+    } else {
+      scaleTest.textContent = t;
+    }
+  });
+  scalePrim.textContent = scaleRange.value;
+  scaleTest.textContent = SCALE[parseInt(scaleRange.value, 10)];
+
+  /* ---------- Дальше только анимации; без GSAP или с reduce тихо выходим ---------- */
+  if (reduce || !hasGsap) return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  /* Прелоадер: счётчик и шторка вверх (CSS-фолбэк отключён классом js) */
+  var preEl = document.querySelector('.preloader');
+  var preNum = document.getElementById('preNum');
+  if (preEl) {
+    var pv = { v: 0 };
+    gsap.to(pv, {
+      v: 100, duration: .9, ease: 'power2.inOut',
+      onUpdate: function(){ preNum.textContent = Math.round(pv.v); }
+    });
+    gsap.to(preEl, {
+      yPercent: -100, duration: .75, ease: 'power4.inOut', delay: 1.05,
+      onComplete: function(){ preEl.style.display = 'none'; }
+    });
+  }
+
+  /* Живой hero: бумажки и листья дрейфуют вверх и разлетаются от курсора */
+  (function(){
+    var cv = document.getElementById('heroCanvas');
+    if (!cv) return;
+    var ctx = cv.getContext('2d');
+    var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+    var mouse = { x: -9999, y: -9999 };
+    var COLORS = ['rgba(111,132,86,', 'rgba(168,79,31,', 'rgba(86,106,65,', 'rgba(227,168,127,'];
+    var parts = [];
+
+    function resize(){
+      W = cv.offsetWidth; H = cv.offsetHeight;
+      cv.width = W * DPR; cv.height = H * DPR;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    function spawn(n){
+      for (var i = 0; i < n; i++) {
+        parts.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - .5) * .3, vy: -(.1 + Math.random() * .25),
+          r: 2.5 + Math.random() * 4,
+          rot: Math.random() * Math.PI * 2, vr: (Math.random() - .5) * .02,
+          sway: Math.random() * Math.PI * 2,
+          leaf: Math.random() < .3,
+          c: COLORS[(Math.random() * COLORS.length) | 0],
+          a: .22 + Math.random() * .28
+        });
+      }
+    }
+    resize(); spawn(36);
+    window.addEventListener('resize', resize);
+
+    var heroEl2 = document.querySelector('.hero');
+    heroEl2.addEventListener('mousemove', function(e){
+      var b = cv.getBoundingClientRect();
+      mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top;
+    });
+    heroEl2.addEventListener('mouseleave', function(){ mouse.x = -9999; mouse.y = -9999; });
+
+    var running = true;
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function(es){ running = es[0].isIntersecting; }, { threshold: 0 }).observe(heroEl2);
+    }
+
+    (function tick(){
+      if (running) {
+        ctx.clearRect(0, 0, W, H);
+        for (var i = 0; i < parts.length; i++) {
+          var p = parts[i];
+          p.sway += .008;
+          var dx = p.x - mouse.x, dy = p.y - mouse.y;
+          var d2 = dx * dx + dy * dy, R = 130;
+          if (d2 < R * R) {
+            var d = Math.sqrt(d2) || 1, f = (1 - d / R) * .9;
+            p.vx += (dx / d) * f; p.vy += (dy / d) * f;
+          }
+          p.vx *= .93; p.vy = p.vy * .93 - .002; /* лёгкая антигравитация вверх */
+          p.x += p.vx + Math.sin(p.sway) * .35;
+          p.y += p.vy;
+          p.rot += p.vr;
+          if (p.y < -20) { p.y = H + 15; p.x = Math.random() * W; }
+          if (p.x < -20) p.x = W + 15;
+          if (p.x > W + 20) p.x = -15;
+          if (p.y > H + 20) p.y = -15;
+          ctx.save();
+          ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+          ctx.fillStyle = p.c + p.a + ')';
+          if (p.leaf) {
+            ctx.beginPath();
+            ctx.moveTo(0, -p.r * 1.6);
+            ctx.quadraticCurveTo(p.r, 0, 0, p.r * 1.6);
+            ctx.quadraticCurveTo(-p.r, 0, 0, -p.r * 1.6);
+            ctx.fill();
+          } else {
+            ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * .7);
+          }
+          ctx.restore();
+        }
+      }
+      requestAnimationFrame(tick);
+    })();
+  })();
+
+  /* Посимвольный reveal: слова не рвутся посередине */
+  function splitChars(el){
+    var text = el.textContent;
+    el.setAttribute('aria-label', text);
+    var words = text.split(' ');
+    el.textContent = '';
+    words.forEach(function(word, wi){
+      var w = document.createElement('span');
+      w.style.whiteSpace = 'nowrap';
+      w.setAttribute('aria-hidden', 'true');
+      word.split('').forEach(function(ch){
+        var c = document.createElement('span');
+        c.className = 'char';
+        c.textContent = ch;
+        w.appendChild(c);
+      });
+      el.appendChild(w);
+      if (wi < words.length - 1) el.appendChild(document.createTextNode(' '));
+    });
+    return el.querySelectorAll('.char');
+  }
+
+  var heroChars = splitChars(document.querySelector('[data-split]'));
+  var heroTl = gsap.timeline({ delay: 1.15, onComplete: initHeroScrub });
+  heroTl
+    .from(heroChars, { yPercent: 110, rotation: 4, opacity: 0, duration: .9, ease: 'power4.out', stagger: .018 })
+    .from('.hero__sub', { y: 24, opacity: 0, duration: .7, ease: 'power3.out' }, '-=.5')
+    .from('.hero__cta .btn', { y: 18, opacity: 0, duration: .6, ease: 'power3.out', stagger: .08 }, '-=.45')
+    .from('.quiz', { y: 40, rotation: 4, opacity: 0, duration: .9, ease: 'power3.out' }, '-=.7')
+    .from('.fchip', { opacity: 0, scale: .8, duration: .5, ease: 'back.out(2)', stagger: .09 }, '-=.5');
+
+  /* Параллакс-выход hero: после интро, чтобы не спорить с ним за свойства */
+  var heroScrubDone = false;
+  function initHeroScrub(){
+    if (heroScrubDone) return;
+    heroScrubDone = true;
+    gsap.to('.hero__stage', {
+      y: 70, rotation: 3, ease: 'none',
+      scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true }
+    });
+    gsap.to('.hero__title', {
+      y: -44, opacity: .35, ease: 'none',
+      scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true }
+    });
+  }
+
+  /* Заголовки секций: посимвольно при появлении */
+  document.querySelectorAll('.h2, .dark__title').forEach(function(h){
+    var chars = splitChars(h);
+    gsap.from(chars, {
+      yPercent: 100, opacity: 0, duration: .7, ease: 'power3.out', stagger: .012,
+      scrollTrigger: { trigger: h, start: 'top 85%', once: true }
+    });
+  });
+
+  /* Появление блоков */
+  document.querySelectorAll('.reveal').forEach(function(el){
+    gsap.fromTo(el,
+      { opacity: 0, y: 28 },
+      {
+        opacity: 1, y: 0, duration: .8, ease: 'power3.out',
+        scrollTrigger: { trigger: el, start: 'top 88%', once: true }
+      });
+  });
+
+  /* Счётчики */
+  document.querySelectorAll('[data-count]').forEach(function(el){
+    var target = parseInt(el.getAttribute('data-count'), 10);
+    var obj = { v: 0 };
+    gsap.to(obj, {
+      v: target, duration: 1.6, ease: 'power2.out',
+      onUpdate: function(){ el.textContent = Math.round(obj.v).toLocaleString('ru-RU'); },
+      scrollTrigger: { trigger: el, start: 'top 88%', once: true }
+    });
+  });
+
+  /* Стек шагов: карточка уменьшается и гаснет, когда следующая наезжает */
+  var stepCards = gsap.utils.toArray('.step-card');
+  stepCards.forEach(function(card, i){
+    if (i === stepCards.length - 1) return;
+    gsap.to(card, {
+      scale: .93, rotateX: 7, opacity: .55, transformOrigin: 'center top', ease: 'none',
+      scrollTrigger: { trigger: stepCards[i + 1], start: 'top bottom', end: 'top 120px', scrub: true }
+    });
+  });
+
+  /* Шторка финала: отзывы отъезжают и притухают под тёмным блоком */
+  gsap.to('.reviews .container', {
+    scale: .95, opacity: .7, transformOrigin: 'center top', ease: 'none',
+    scrollTrigger: { trigger: '.dark', start: 'top bottom', end: 'top 25%', scrub: true }
+  });
+
+  /* Бегущая строка: ускоряется вслед за скроллом, вверх — разворачивается */
+  var mqTween = gsap.to(track, { xPercent: -50, ease: 'none', duration: 28, repeat: -1 });
+  ScrollTrigger.create({
+    onUpdate: function(self){
+      var vel = self.getVelocity();
+      if (Math.abs(vel) < 400) return;
+      var dir = vel > 0 ? 1 : -1;
+      gsap.to(mqTween, { timeScale: dir * 3, duration: .25, overwrite: true });
+      gsap.to(mqTween, { timeScale: dir, duration: 1.4, delay: .3, overwrite: false });
+      /* строка ещё и наклоняется от скорости скролла */
+      gsap.to(track, { skewX: gsap.utils.clamp(-6, 6, vel / 220), duration: .3, overwrite: 'auto' });
+      gsap.to(track, { skewX: 0, duration: .8, delay: .35, overwrite: false });
+    }
+  });
+
+  /* Нить прогресса чтения */
+  gsap.to('.progress', {
+    scaleX: 1, ease: 'none',
+    scrollTrigger: { trigger: 'main', start: 'top top', end: 'bottom bottom', scrub: .3 }
+  });
+
+  /* Псевдо-3D сцена hero: карточка наклоняется за мышью, чипы уезжают по глубине */
+  if (window.matchMedia('(pointer: fine)').matches) {
+    var quizEl = document.querySelector('.quiz');
+    var heroEl = document.querySelector('.hero');
+    var tiltX = gsap.quickTo(quizEl, 'rotationX', { duration: .6, ease: 'power3' });
+    var tiltY = gsap.quickTo(quizEl, 'rotationY', { duration: .6, ease: 'power3' });
+    var chipTos = Array.prototype.map.call(document.querySelectorAll('.fchip'), function(chip){
+      return {
+        to: gsap.quickTo(chip, 'x', { duration: .8, ease: 'power3' }),
+        depth: parseFloat(chip.getAttribute('data-depth')) || 24
+      };
+    });
+    heroEl.addEventListener('mousemove', function(e){
+      var r = heroEl.getBoundingClientRect();
+      var nx = (e.clientX - r.left) / r.width - .5;
+      var ny = (e.clientY - r.top) / r.height - .5;
+      tiltY(nx * 7);
+      tiltX(ny * -7);
+      chipTos.forEach(function(c){ c.to(nx * c.depth); });
+    });
+    heroEl.addEventListener('mouseleave', function(){
+      tiltX(0); tiltY(0);
+      chipTos.forEach(function(c){ c.to(0); });
+    });
+  }
+
+  /* Чипы-факты плавают сами по себе */
+  document.querySelectorAll('.fchip').forEach(function(chip, i){
+    gsap.to(chip, { y: '+=12', duration: 2.2 + i * .6, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+  });
+
+  /* Гигантское слово: контур заливается цветом по мере чтения */
+  gsap.fromTo('.kinetic__fill', { clipPath: 'inset(0 100% 0 0)' }, {
+    clipPath: 'inset(0 0% 0 0)', ease: 'none',
+    scrollTrigger: { trigger: '.kinetic', start: 'top 78%', end: 'bottom 45%', scrub: true }
+  });
+  gsap.fromTo('.kinetic__word', { yPercent: 16 }, {
+    yPercent: -8, ease: 'none',
+    scrollTrigger: { trigger: '.kinetic', start: 'top bottom', end: 'bottom top', scrub: true }
+  });
+
+  /* Отзывы: на десктопе секция пинится и листается горизонтально */
+  var mm = gsap.matchMedia();
+  mm.add('(min-width: 1021px)', function(){
+    var rail = document.querySelector('.reviews__grid');
+    var dist = function(){ return Math.max(0, rail.scrollWidth - rail.parentElement.clientWidth); };
+    var tween = gsap.to(rail, {
+      x: function(){ return -dist(); }, ease: 'none',
+      scrollTrigger: {
+        trigger: '.reviews', start: 'top top',
+        end: function(){ return '+=' + (dist() + 200); },
+        pin: true, scrub: 1, anticipatePin: 1, invalidateOnRefresh: true
+      }
+    });
+    return function(){
+      if (tween.scrollTrigger) tween.scrollTrigger.kill();
+      tween.kill();
+      gsap.set(rail, { clearProps: 'x' });
+    };
+  });
+
+  /* Магнитные кнопки тянутся к курсору (только точный указатель) */
+  if (window.matchMedia('(pointer: fine)').matches) {
+    document.querySelectorAll('.btn').forEach(function(btn){
+      var xTo = gsap.quickTo(btn, 'x', { duration: .4, ease: 'power3' });
+      var yTo = gsap.quickTo(btn, 'y', { duration: .4, ease: 'power3' });
+      btn.addEventListener('mousemove', function(e){
+        var r = btn.getBoundingClientRect();
+        xTo((e.clientX - r.left - r.width / 2) * .25);
+        yTo((e.clientY - r.top - r.height / 2) * .35);
+      });
+      btn.addEventListener('mouseleave', function(){ xTo(0); yTo(0); });
+    });
+  }
+
+  /* Шапка прячется при скролле вниз и возвращается при скролле вверх */
+  var navY = gsap.quickTo('#nav', 'yPercent', { duration: .35, ease: 'power3' });
+  var lastScrollY = 0;
+  window.addEventListener('scroll', function(){
+    var y = window.scrollY;
+    navY(y > lastScrollY && y > 160 ? -110 : 0);
+    lastScrollY = y;
+  }, { passive: true });
+
+  /* 3D-наклон карточек bento за мышью */
+  if (window.matchMedia('(pointer: fine)').matches) {
+    document.querySelectorAll('.cell').forEach(function(cell){
+      var rx = gsap.quickTo(cell, 'rotationX', { duration: .5, ease: 'power3' });
+      var ry = gsap.quickTo(cell, 'rotationY', { duration: .5, ease: 'power3' });
+      cell.addEventListener('mousemove', function(e){
+        var r = cell.getBoundingClientRect();
+        var nx = (e.clientX - r.left) / r.width - .5;
+        var ny = (e.clientY - r.top) / r.height - .5;
+        ry(nx * 5); rx(ny * -5);
+      });
+      cell.addEventListener('mouseleave', function(){ rx(0); ry(0); });
+    });
+
+    /* Гигантское слово чуть плывёт за курсором */
+    var kinEl = document.querySelector('.kinetic__word');
+    var kinX = gsap.quickTo(kinEl, 'xPercent', { duration: .8, ease: 'power3' });
+    document.querySelector('.kinetic').addEventListener('mousemove', function(e){
+      var r = e.currentTarget.getBoundingClientRect();
+      kinX(((e.clientX - r.left) / r.width - .5) * 5);
+    });
+
+    /* Прожектор финального тёмного блока идёт за мышью */
+    var darkEl = document.querySelector('.dark');
+    darkEl.addEventListener('mousemove', function(e){
+      var r = darkEl.getBoundingClientRect();
+      darkEl.style.setProperty('--dx', (e.clientX - r.left) + 'px');
+      darkEl.style.setProperty('--dy', (e.clientY - r.top) + 'px');
+    });
+  }
+
+  /* Спотлайт в карточках bento идёт за курсором */
+  document.querySelectorAll('.cell').forEach(function(cell){
+    cell.addEventListener('mousemove', function(e){
+      var r = cell.getBoundingClientRect();
+      cell.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      cell.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+
+  /* Тихий дрейф декоративной дуги */
+  gsap.to('.hero__deco', { rotation: 360, duration: 90, repeat: -1, ease: 'none', transformOrigin: '50% 50%' });
+})();
+</script>
+</body>
+</html>
