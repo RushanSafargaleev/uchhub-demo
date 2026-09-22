@@ -189,7 +189,12 @@ html.js:not(.no-anim) .preloader{animation:none}
 .fchip--1{top:-20px;left:-24px}
 .fchip--2{bottom:26px;left:-58px}
 .fchip--3{top:40%;right:-20px}
-@media (max-width:1020px){.fchip{display:none}}
+/* На мобиле чипы не прячем, а ставим в безопасные позиции внутри карточки */
+@media (max-width:1020px){
+  .fchip--1{top:-16px;right:14px;left:auto}
+  .fchip--2{bottom:-12px;left:14px}
+  .fchip--3{display:none} /* на узком экране достаточно двух */
+}
 .quiz__top{
   display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);
@@ -447,7 +452,7 @@ input[type="range"]::-moz-range-thumb{
 .kinetic__word{
   position:relative;
   font-family:var(--font-display);
-  font-size:clamp(60px,14vw,225px);line-height:1;white-space:nowrap;
+  font-size:clamp(44px,14vw,225px);line-height:1;white-space:nowrap;
   color:transparent;-webkit-text-stroke:1.5px var(--sage-deep);
 }
 .kinetic__fill{
@@ -475,6 +480,18 @@ input[type="range"]::-moz-range-thumb{
   .reviews__grid{display:flex;gap:22px;width:max-content;will-change:transform}
   .review{width:400px;height:460px}
   .review--big{width:600px;height:460px}
+}
+/* Мобайл/планшет: свайп-лента отзывов со снапом */
+@media (max-width:1020px){
+  .reviews__grid{
+    display:flex;gap:14px;
+    overflow-x:auto;scroll-snap-type:x mandatory;
+    margin:0 -24px;padding:4px 24px 10px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  }
+  .reviews__grid::-webkit-scrollbar{display:none}
+  .review{flex:0 0 84%;scroll-snap-align:center;min-height:280px}
+  .review--big{flex:0 0 86%}
 }
 .review__stars{color:var(--accent-deep);font-size:15px;letter-spacing:3px}
 .review__quote{
@@ -584,6 +601,13 @@ input[type="range"]::-moz-range-thumb{
   .hero{padding-top:104px}
   .hero__cta .btn{flex:1 1 auto}
 }
+/* ---------- Нажим-отклик на касание ---------- */
+@media (hover:none){
+  .cell:active,.try__card:active,.step-card:active,.review:active{transform:scale(.985)}
+  .btn:active{transform:scale(.97)}
+  .chip:active{transform:scale(.95)}
+}
+
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -1209,6 +1233,13 @@ input[type="range"]::-moz-range-thumb{
       mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top;
     });
     heroEl2.addEventListener('mouseleave', function(){ mouse.x = -9999; mouse.y = -9999; });
+    /* На тач-экранах частицы убегают от пальца */
+    heroEl2.addEventListener('touchmove', function(e){
+      var t = e.touches[0];
+      var b = cv.getBoundingClientRect();
+      mouse.x = t.clientX - b.left; mouse.y = t.clientY - b.top;
+    }, { passive: true });
+    heroEl2.addEventListener('touchend', function(){ mouse.x = -9999; mouse.y = -9999; });
 
     var running = true;
     if ('IntersectionObserver' in window) {
@@ -1397,6 +1428,11 @@ input[type="range"]::-moz-range-thumb{
   document.querySelectorAll('.fchip').forEach(function(chip, i){
     gsap.to(chip, { y: '+=12', duration: 2.2 + i * .6, repeat: -1, yoyo: true, ease: 'sine.inOut' });
   });
+
+  /* Тач-устройства: вместо наклона за мышью карточка сама мягко покачивается в 3D */
+  if (window.matchMedia('(pointer: coarse)').matches) {
+    gsap.to('.quiz', { rotationY: 4, rotationX: -3, duration: 3.2, ease: 'sine.inOut', yoyo: true, repeat: -1, delay: 2.2 });
+  }
 
   /* Гигантское слово: контур заливается цветом по мере чтения */
   gsap.fromTo('.kinetic__fill', { clipPath: 'inset(0 100% 0 0)' }, {
