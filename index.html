@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>УчХаб: своя онлайн-школа для подготовки к ЕГЭ</title>
-<meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="description" content="УчХаб даёт преподавателю собственную мини онлайн-школу: сайт под вашей маркой, тренажёр с памятью, домашние задания, оплаты и уведомления в одном окне.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%231e2a19'/%3E%3Ctext x='32' y='43' font-family='Georgia,serif' font-size='34' fill='%23f3eee3' text-anchor='middle'%3EУ%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -167,6 +166,11 @@ html.js:not(.no-anim) .preloader{animation:none}
 .hero__deco{
   position:absolute;pointer-events:none;
 }
+/* Тихий декор секций: плывёт с другой скоростью при скролле ([data-drift]) */
+.steps,.features{position:relative}
+.sec-deco{position:absolute;pointer-events:none;z-index:0}
+.sec-deco--ring{right:-130px;top:50px;width:380px;height:380px;opacity:.8}
+.sec-deco--ast{left:-34px;bottom:44px;width:120px;height:120px;color:var(--sage);opacity:.55}
 
 /* ---------- Карточка тренажёра (живая мини-версия продукта) ---------- */
 .hero__stage{position:relative}
@@ -591,6 +595,8 @@ input[type="range"]::-moz-range-thumb{
     grid-template-columns:1fr;gap:10px;padding:28px 24px;min-height:0;
     top:calc(78px + var(--i,0) * 8px);margin-bottom:16px;
   }
+  .sec-deco--ring{width:220px;height:220px;right:-90px}
+  .sec-deco--ast{width:84px;height:84px;left:-14px}
   .steps__num{font-size:56px}
   .reviews{padding-bottom:200px}
   .dark{margin-top:-90px;border-radius:28px 28px 0 0}
@@ -688,7 +694,7 @@ input[type="range"]::-moz-range-thumb{
     </div>
 
     <!-- Тихий декор: тонкая дуга за карточкой -->
-    <svg class="hero__deco" style="right:-140px;top:8%;width:520px;height:520px;opacity:.5" viewBox="0 0 520 520" fill="none" aria-hidden="true">
+    <svg class="hero__deco" style="right:-140px;top:8%;width:520px;height:520px;opacity:.5" data-drift="70" viewBox="0 0 520 520" fill="none" aria-hidden="true">
       <circle cx="260" cy="260" r="250" stroke="#6f8456" stroke-opacity=".4" stroke-width="1.5" stroke-dasharray="3 10"/>
     </svg>
   </section>
@@ -733,6 +739,9 @@ input[type="range"]::-moz-range-thumb{
 
   <!-- ===== Четыре шага ===== -->
   <section class="steps" id="how">
+    <svg class="sec-deco sec-deco--ring" data-drift="-60" viewBox="0 0 380 380" fill="none" aria-hidden="true">
+      <circle cx="190" cy="190" r="180" stroke="#6f8456" stroke-opacity=".3" stroke-width="1.5" stroke-dasharray="3 10"/>
+    </svg>
     <div class="container">
       <div class="steps__head reveal">
         <h2 class="h2">Четыре шага до своей школы</h2>
@@ -772,6 +781,9 @@ input[type="range"]::-moz-range-thumb{
 
   <!-- ===== Возможности: bento ===== -->
   <section class="features" id="features">
+    <svg class="sec-deco sec-deco--ast" data-drift="55" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M60 10v100M10 60h100M25 25l70 70M95 25L25 95" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
     <div class="container">
       <div class="features__head reveal">
         <h2 class="h2">Всё для школы в одном окне</h2>
@@ -1530,6 +1542,18 @@ input[type="range"]::-moz-range-thumb{
 
   /* Тихий дрейф декоративной дуги */
   gsap.to('.hero__deco', { rotation: 360, duration: 90, repeat: -1, ease: 'none', transformOrigin: '50% 50%' });
+
+  /* Скролл-параллакс декора: слои плывут с разной скоростью (работает и от пальца) */
+  document.querySelectorAll('[data-drift]').forEach(function(el){
+    var amp = parseFloat(el.getAttribute('data-drift')) || 40;
+    gsap.fromTo(el, { y: -amp }, {
+      y: amp, ease: 'none',
+      scrollTrigger: {
+        trigger: el.closest('section') || el.parentElement,
+        start: 'top bottom', end: 'bottom top', scrub: true
+      }
+    });
+  });
 })();
 </script>
 </body>
